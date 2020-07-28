@@ -3,6 +3,7 @@ import threading
 from wsgiref.handlers import format_date_time
 from datetime import datetime
 from time import mktime
+import gzip
 
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 PORT = 8080  # Port to listen on (non-privileged ports are > 1023)
@@ -15,7 +16,7 @@ class Server:
         stamp = mktime(now.timetuple())
         return format_date_time(stamp)
 
-    def get_content(self, url):
+    def get_content(self, url, g):
         if url == "/":
             address = "Pages/main.html"
         elif "html" in url:
@@ -24,6 +25,8 @@ class Server:
             address = "." + url
         file = open(address, "rb")
         content = file.read()
+        if g:
+            content = gzip.compress(content)
         return content
 
     def response_maker(self, data_dict, request_details):
@@ -31,9 +34,14 @@ class Server:
         response_str = request_details[2] + " "
         response_str += code + '\r\n'
         response_str += 'Connection: ' + data_dict['Connection'] + '\r\n'
-        content = self.get_content(request_details[1])
+        g = False
+        if "gzip" in data_dict["Accept-Encoding"]:
+            g = True
+        content = self.get_content(request_details[1], g)
         response_str += 'Connection-Length: ' + str(len(content)) + '\r\n'
         response_str += 'Content-Type: text/html' + '\r\n'
+        if g:
+            response_str += 'Content-Encoding: gzip' + '\r\n'
         time = "[" + str(self.get_time()) + "]"
         response_str += 'Date: ' + str(self.get_time()) + '\r\n'
         response_str += '\r\n'
@@ -50,6 +58,8 @@ class Server:
                         data_split = data.split("\r\n")
                         data_request = data_split[0]
                         request_details = data_request.split(" ")
+                        if request_details[1] == "/favicon.ico":
+                            continue
                         data_dict = dict()
                         for i in range(1, len(data_split)):
                             if ":" in data_split[i]:
