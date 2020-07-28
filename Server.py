@@ -34,17 +34,13 @@ class Server:
             code = '200 OK'
         elif status == 400:
             code = '400 Bad Request'
-            message = 'Wrong HTTP Request!'
         elif status == 404:
             code = '404 Not Found'
-            message = 'Page Not Found:('
         elif status == 501:
             code = '501 Not Implement'
-            message = 'Method Not Implemented:p'
         else:
             ##405
             code = 'Method Not Allowed'
-            message = 'This Method Is Not Allowed.'
         response_str = request_details[2] + " "
         response_str += code + '\r\n'
         response_str += 'Connection: ' + data_dict['Connection'] + '\r\n'
@@ -54,7 +50,9 @@ class Server:
         if status is None:
             content = self.get_content(request_details[1], g)
         else:
-            content = bytes(message)
+            address = "Errors/"+str(status)+".html"
+            file = open(address, "rb")
+            content = file.read()
         response_str += 'Content-Length: ' + str(len(content)) + '\r\n'
         response_str += 'Content-Type: text/html' + '\r\n'
         if g:
