@@ -4,11 +4,22 @@ import threading
 from datetime import datetime
 from time import mktime
 from wsgiref.handlers import format_date_time
+import time
+import multiprocessing as mp
 
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 PORT = 8080  # Port to listen on (non-privileged ports are > 1023)
-ALLOWED_URLS = ['/first.html', '/', '/second.html', '/media/night.png', '/media/sea.jpg', 'media/stars.jpeg']
+ALLOWED_URLS = ['/first.html', '/', '/second.html', '/media/night.png', '/media/sea.jpg', '/media/stars.jpeg', '/media/license.txt']
+content_types = {'/':'text/html', '/first.html':'text/html', '/second.html':'text/html',
+                 '/media/night.png':'image/png', '/media/stars.jpeg':'image/jpeg',
+                 '/media/sea.jpg':'image/jpg', '/media/license.txt':'text/plain'}
+time_threads = dict()
+time_lock = mp.Lock()
 
+
+def make_time_thread(clnt, t, key):
+    time.sleep(0.0000001)
+    clnt.close()
 
 class Server:
 
@@ -56,7 +67,11 @@ class Server:
             file = open(address, "rb")
             content = file.read()
         response_str += 'Content-Length: ' + str(len(content)) + '\r\n'
-        response_str += 'Content-Type: text/html' + '\r\n'
+        if status is not None:
+            content_type = 'text/html'
+        else:
+            content_type = content_types[request_details[1]]
+        response_str += 'Content-Type: '+ content_type + '\r\n'
         if g:
             response_str += 'Content-Encoding: gzip' + '\r\n'
         time = "[" + str(self.get_time()) + "]"
@@ -88,13 +103,13 @@ class Server:
         return error
 
     def client_handler(self, clnt, addr):
+        key = addr[1]
         try:
             with clnt:
                 while True:
                     data = clnt.recv(1024).decode("utf-8")
                     if len(data) > 0:
                         data_split = data.split("\r\n")
-                        print(data)
                         data_request = data_split[0]
                         request_details = data_request.split(" ")
                         if len(request_details) > 1 and request_details[1] == "/favicon.ico":
@@ -107,9 +122,27 @@ class Server:
                                 data_dict[elements[0].strip()] = elements[1].strip()
                         response, time, code = self.response_maker(data_dict, request_details, error)
                         print(time, '"' + data_request + '"', '"' + code + '"')
+                        clnt.sendall(response)
+                        if "Connection" not in data_dict or data_dict["Connection"] == "close":
+                            clnt.close()
+                        else:
+                            time = 60
+                            if "Keep-Alive" in data_dict:
+                                try:
+                                    time = int(data_dict["Keep-Alive"])
+                                    if time < 0:
+                                        time = 60
+                                except ValueError:
+                                    time = 60
+                            time_thread = mp.Process(target=make_time_thread, args=(clnt, time, key, ), daemon=False)
+                            time_lock.acquire()
+                            if key in time_threads:
+                                time_threads[key].terminate()
+                            time_threads[key] = time_thread
+                            time_lock.release()
+                            time_thread.start()
                     if not data:
-                        break
-                    clnt.sendall(response)
+                        continue
         except ConnectionResetError:
             clnt.close()
 
