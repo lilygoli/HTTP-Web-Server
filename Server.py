@@ -8,7 +8,6 @@ import gzip
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 PORT = 8080  # Port to listen on (non-privileged ports are > 1023)
 
-
 class Server:
 
     def get_time(self):
@@ -29,20 +28,40 @@ class Server:
             content = gzip.compress(content)
         return content
 
-    def response_maker(self, data_dict, request_details):
-        code = '200 OK'
+    def response_maker(self, data_dict, request_details, status):
+        message = ''
+        if status is None:
+            code = '200 OK'
+        elif status == 400:
+            code = '400 Bad Request'
+            message = 'Wrong HTTP Request!'
+        elif status == 404:
+            code = '404 Not Found'
+            message = 'Page Not Found:('
+        elif status == 501:
+            code = '501 Not Implement'
+            message = 'Method Not Implemented:p'
+        else:
+            ##405
+            code = 'Method Not Allowed'
+            message = 'This Method Is Not Allowed.'
         response_str = request_details[2] + " "
         response_str += code + '\r\n'
         response_str += 'Connection: ' + data_dict['Connection'] + '\r\n'
         g = False
-        if "gzip" in data_dict["Accept-Encoding"]:
+        if "gzip" in data_dict["Accept-Encoding"] and status is None:
             g = True
-        content = self.get_content(request_details[1], g)
-        response_str += 'Connection-Length: ' + str(len(content)) + '\r\n'
+        if status is None:
+            content = self.get_content(request_details[1], g)
+        else:
+            content = bytes(message)
+        response_str += 'Content-Length: ' + str(len(content)) + '\r\n'
         response_str += 'Content-Type: text/html' + '\r\n'
         if g:
             response_str += 'Content-Encoding: gzip' + '\r\n'
         time = "[" + str(self.get_time()) + "]"
+        if status == 405:
+            response_str += 'Allow: GET\r\n'
         response_str += 'Date: ' + str(self.get_time()) + '\r\n'
         response_str += '\r\n'
         response_str = bytes(response_str, 'utf-8')
