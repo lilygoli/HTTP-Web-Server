@@ -13,29 +13,37 @@ class Server:
     def get_time(self):
         now = datetime.now()
         stamp = mktime(now.timetuple())
-        return  format_date_time(stamp)
+        return format_date_time(stamp)
+
+    def get_content(self, url):
+        if url == "/":
+            address = "Pages/main.html"
+        elif "html" in url:
+            address = "Pages" + url
+        else:
+            address = "." + url
+        file = open(address, "rb")
+        content = file.read()
+        return content
 
     def response_maker(self, data_dict, request_details):
-        code = '200 OK\r\n'
+        code = '200 OK'
         response_str = request_details[2] + " "
-        response_str += code
-        response_str += 'Connection: '+ data_dict['Connection'] + '\r\n'
-        file = open("Pages/main.html", "r")
-        content = file.read()
-        encoded_content = content.encode()
-        response_str += 'Connection-Length: ' + str(len(encoded_content)) + '\r\n'
+        response_str += code + '\r\n'
+        response_str += 'Connection: ' + data_dict['Connection'] + '\r\n'
+        content = self.get_content(request_details[1])
+        response_str += 'Connection-Length: ' + str(len(content)) + '\r\n'
         response_str += 'Content-Type: text/html' + '\r\n'
+        time = "[" + str(self.get_time()) + "]"
         response_str += 'Date: ' + str(self.get_time()) + '\r\n'
         response_str += '\r\n'
-        response_str += content
         response_str = bytes(response_str, 'utf-8')
-        return response_str
+        response_str += content
+        return response_str, time, code
 
     def client_handler(self, clnt, addr):
         try:
             with clnt:
-                print('Connected by', addr)
-                print(type(clnt))
                 while True:
                     data = clnt.recv(1024).decode("utf-8")
                     if len(data) > 0:
@@ -47,7 +55,8 @@ class Server:
                             if ":" in data_split[i]:
                                 elements = data_split[i].split(":", 2)
                                 data_dict[elements[0].strip()] = elements[1].strip()
-                        response = self.response_maker(data_dict, request_details)
+                        response, time, code = self.response_maker(data_dict, request_details)
+                        print(time, '"' + data_request + '"', '"' + code + '"')
                     if not data:
                         break
                     clnt.sendall(response)
