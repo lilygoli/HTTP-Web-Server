@@ -1,12 +1,14 @@
+import gzip
 import socket
 import threading
-from wsgiref.handlers import format_date_time
 from datetime import datetime
 from time import mktime
-import gzip
+from wsgiref.handlers import format_date_time
 
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 PORT = 8080  # Port to listen on (non-privileged ports are > 1023)
+ALLOWED_URLS = ['/first.html', '/', '/second.html', '/media/night.png', '/media/sea.jpg', 'media/stars.jpeg']
+
 
 class Server:
 
@@ -39,13 +41,13 @@ class Server:
         elif status == 501:
             code = '501 Not Implement'
         else:
-            ##405
+            # 405
             code = 'Method Not Allowed'
         response_str = request_details[2] + " "
         response_str += code + '\r\n'
         response_str += 'Connection: ' + data_dict['Connection'] + '\r\n'
         g = False
-        if "gzip" in data_dict["Accept-Encoding"] and status is None:
+        if "Accept-Encoding" in data_dict.keys() and "gzip" in data_dict["Accept-Encoding"] and status is None:
             g = True
         if status is None:
             content = self.get_content(request_details[1], g)
@@ -66,6 +68,25 @@ class Server:
         response_str += content
         return response_str, time, code
 
+    def check_error_header(self, request_details, data_split):
+        error = None
+        if len(request_details) != 3:
+            error = 400
+        elif not str(request_details[2]).startswith("HTTP"):
+            error = 400
+        for i in data_split[1:]:
+            if i != '' and i is not None and ':' not in i:
+                error = 400
+        if error:
+            return error
+        elif request_details[0] not in ['PUT', 'POST', 'HEAD', 'GET', 'DELETE']:
+            error = 501
+        elif request_details[0] != 'GET':
+            error = 405
+        elif request_details[1] not in ALLOWED_URLS:
+            error = 404
+        return error
+
     def client_handler(self, clnt, addr):
         try:
             with clnt:
@@ -73,16 +94,18 @@ class Server:
                     data = clnt.recv(1024).decode("utf-8")
                     if len(data) > 0:
                         data_split = data.split("\r\n")
+                        print(data)
                         data_request = data_split[0]
                         request_details = data_request.split(" ")
-                        if request_details[1] == "/favicon.ico":
+                        if len(request_details) > 1 and request_details[1] == "/favicon.ico":
                             continue
+                        error = self.check_error_header(request_details, data_split)
                         data_dict = dict()
                         for i in range(1, len(data_split)):
                             if ":" in data_split[i]:
                                 elements = data_split[i].split(":", 2)
                                 data_dict[elements[0].strip()] = elements[1].strip()
-                        response, time, code = self.response_maker(data_dict, request_details)
+                        response, time, code = self.response_maker(data_dict, request_details, error)
                         print(time, '"' + data_request + '"', '"' + code + '"')
                     if not data:
                         break
