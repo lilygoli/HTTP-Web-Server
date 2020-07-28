@@ -6,16 +6,33 @@ PORT = 8080  # Port to listen on (non-privileged ports are > 1023)
 
 
 class Server:
+
+    def response_maker(self, data_dict, request_details):
+        pass
+
+
     def client_handler(self, clnt, addr):
         try:
             with clnt:
                 print('Connected by', addr)
                 print(type(clnt))
                 while True:
-                    data = clnt.recv(1024)
+                    data = clnt.recv(1024).decode("utf-8")
+                    if len(data) > 0:
+                        data_split = data.split("\r\n")
+                        data_request = data_split[0]
+                        request_details = data_request.split(" ")
+                        print(request_details)
+                        data_dict = dict()
+                        for i in range(1, len(data_split)):
+                            if ":" in data_split[i]:
+                                elements = data_split[i].split(":", 2)
+                                data_dict[elements[0].strip()] = elements[1].strip()
+                        self.response_maker(data_dict, request_details)
+                        #print(data_dict)
                     if not data:
                         break
-                    clnt.sendall(data)
+                    #clnt.sendall(data)
         except ConnectionResetError:
             clnt.close()
 
