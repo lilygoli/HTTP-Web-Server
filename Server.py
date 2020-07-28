@@ -28,7 +28,6 @@ class Server:
         response_str += 'Date: ' + str(self.get_time()) + '\r\n'
         response_str += '\r\n'
         response_str += content
-        # response_str.encode()
         response_str = bytes(response_str, 'utf-8')
         return response_str
 
@@ -43,14 +42,12 @@ class Server:
                         data_split = data.split("\r\n")
                         data_request = data_split[0]
                         request_details = data_request.split(" ")
-                        # print(request_details)
                         data_dict = dict()
                         for i in range(1, len(data_split)):
                             if ":" in data_split[i]:
                                 elements = data_split[i].split(":", 2)
                                 data_dict[elements[0].strip()] = elements[1].strip()
                         response = self.response_maker(data_dict, request_details)
-                        #print(data_dict)
                     if not data:
                         break
                     clnt.sendall(response)
