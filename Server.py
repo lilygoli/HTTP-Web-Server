@@ -18,7 +18,7 @@ time_lock = mp.Lock()
 
 
 def make_time_thread(clnt, t, key):
-    time.sleep(0.0000001)
+    time.sleep(t)
     clnt.close()
 
 class Server:
