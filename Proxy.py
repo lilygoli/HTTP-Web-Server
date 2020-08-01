@@ -78,10 +78,42 @@ class Proxy:
                 handler = threading.Thread(target=self.client_handler, args=(clnt, addr,), daemon=False)
                 handler.start()
 
+class Telnet:
+    def handler(self, clnt, addr):
+        try:
+            with clnt:
+                command = ""
+                while True:
+                    data = clnt.recv(1024).decode("utf-8")
+                    print(data)
+                    if data == "\r\n":
+                        print(command)
+                        ##todo ifs
+                        command = ""
+                    else:
+                        command += data
+
+
+        except ConnectionResetError:
+            clnt.close()
+
+
+    def listen(self):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind((HOST, command_port))
+            s.listen()
+            while True:
+                clnt, addr = s.accept()
+                handler = threading.Thread(target=self.handler, args=(clnt, addr,), daemon=False)
+                handler.start()
+
+
 
 def main():
     proxy = Proxy()
     proxy.client_listen()
+    telnet = Telnet()
+    telnet.listen()
 
 
 if __name__ == "__main__":
