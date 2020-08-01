@@ -76,7 +76,7 @@ class Proxy:
             self.count_packet_client += 1
             new_mean /= self.count_packet_client
             new_std = (self.squared_packets_client - ((
-                                                                  new_mean * self.count_packet_client) ** 2) / self.count_packet_client) / self.count_packet_client
+                                                              new_mean * self.count_packet_client) ** 2) / self.count_packet_client) / self.count_packet_client
             self.client_packet_length = (new_mean, new_std ** (1 / 2))
             # print(self.client_packet_length)
 
@@ -136,12 +136,12 @@ class Proxy:
                     data = data.replace("Connection: keep-alive", "Connection: close")
                     data_split = data.split("\r\n")
                     data_request = data_split[0]
-                    request_type = data_request.split(" ")[0]
+                    # request_type = data_request.split(" ")[0]
                     port, web_server = self.parse_request(data_request)
                     self.top_sema.acquire()
                     self.update_top_sites(web_server)
                     self.top_sema.release()
-                    if True:
+                    if port != 443:
                         print("Request:", "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
                               "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
                         data = bytes(data, 'utf-8')
@@ -212,7 +212,7 @@ class Telnet:
 
     def make_data_from_dict(self, dictionary):
         ans = ""
-        for (k,v) in dictionary.items():
+        for (k, v) in dictionary.items():
             ans += k + ": " + str(v) + "\r\n"
         return ans
 
@@ -250,7 +250,8 @@ class Telnet:
                         elif command.startswith("top"):
                             command_parts = command.split(" ")
                             print(command_parts)
-                            if len(command_parts) == 4 and command_parts[2] == 'visited' and command_parts[3] == 'hosts':
+                            if len(command_parts) == 4 and command_parts[2] == 'visited' and command_parts[
+                                3] == 'hosts':
                                 try:
                                     k = int(command_parts[1])
                                     answer = self.proxy.get_k_top_sites(k)
