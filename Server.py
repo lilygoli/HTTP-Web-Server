@@ -7,6 +7,8 @@ from wsgiref.handlers import format_date_time
 import time
 import multiprocessing as mp
 
+# change line 130 sleeping time if you like
+
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 PORT = 8080  # Port to listen on (non-privileged ports are > 1023)
 ALLOWED_URLS = ['/first.html', '/', '/second.html', '/media/night.png', '/media/sea.jpg', '/media/stars.jpeg',
@@ -109,7 +111,10 @@ class Server:
         try:
             with clnt:
                 while True:
-                    data = clnt.recv(1024).decode("utf-8")
+                    try:
+                        data = clnt.recv(1024).decode("utf-8")
+                    except ConnectionAbortedError:
+                        continue
                     if len(data) > 0:
                         data_split = data.split("\r\n")
                         data_request = data_split[0]
@@ -122,22 +127,25 @@ class Server:
                             if ":" in data_split[i]:
                                 elements = data_split[i].split(":", 2)
                                 data_dict[elements[0].strip()] = elements[1].strip()
-                        response, time, code = self.response_maker(data_dict, request_details, error)
-                        print(time, '"' + data_request + '"', '"' + code + '"')
+                        response, time_stamp, code = self.response_maker(data_dict, request_details, error)
+                        print(time_stamp, '"' + data_request + '"', '"' + code + '"')
+                        print("sleeping...")
+                        time.sleep(30)
+                        print("woke up!")
                         clnt.sendall(response)
                         if "Connection" not in data_dict or data_dict["Connection"] == "close":
                             clnt.close()
                             break
                         else:
-                            time = 60
+                            time_stamp = 60
                             if "Keep-Alive" in data_dict:
                                 try:
-                                    time = int(data_dict["Keep-Alive"])
-                                    if time < 0:
-                                        time = 60
+                                    time_stamp = int(data_dict["Keep-Alive"])
+                                    if time_stamp < 0:
+                                        time_stamp = 60
                                 except ValueError:
-                                    time = 60
-                            time_thread = mp.Process(target=make_time_thread, args=(clnt, time, key,), daemon=False)
+                                    time_stamp = 60
+                            time_thread = mp.Process(target=make_time_thread, args=(clnt, time_stamp, key,), daemon=False)
                             time_lock.acquire()
                             if key in time_threads:
                                 time_threads[key].terminate()

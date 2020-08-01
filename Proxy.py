@@ -141,12 +141,15 @@ class Proxy:
                     self.top_sema.acquire()
                     self.update_top_sites(web_server)
                     self.top_sema.release()
-                    if request_type == "GET":
+                    if True:
                         print("Request:", "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
                               "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
                         data = bytes(data, 'utf-8')
                         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                            s.connect((web_server, port))
+                            try:
+                                s.connect((web_server, port))
+                            except TimeoutError:
+                                return
                             s.sendall(data)
                             while True:
                                 answer = s.recv(1024)
@@ -169,7 +172,7 @@ class Proxy:
                                     clnt.sendall(answer)
                                 else:
                                     break
-                        s.close()
+                        self.close = s.close()
                     clnt.close()
         except ConnectionResetError:
             clnt.close()
