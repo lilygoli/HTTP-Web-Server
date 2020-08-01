@@ -22,6 +22,9 @@ class Proxy:
         self.server_body_length = (0, 0)
         self.cur_body_len = 0
         self.cur_header_len = 0
+        self.top_sites = []
+        self.top_dict = {}
+        self.top_count = 0
         self.types = {"text/html", "text/plain", "image/png", "image/jpg", "image/jpeg"}
         self.type_counts = {"text/html": 0, "text/plain": 0, "image/png": 0, "image/jpg": 0, "image/jpeg": 0}
         self.type_semaphore = threading.Semaphore()
@@ -30,12 +33,12 @@ class Proxy:
                               "400 Bad Request": 0, "404 Not Found": 0, "405 Method Not Allowed": 0,
                               "501 Not Implemented": 0}
         self.status_semaphore = threading.Semaphore()
+        self.top_sema = threading.Semaphore()
 
     def update_lengths(self, packet, server):
         if server:
             if len(packet) > 0:
                 if packet.startswith("HTTP"):
-
                     p = packet.split("\n")
                     index = p.index('\r')
                     body = p[index + 1]
@@ -55,12 +58,12 @@ class Proxy:
                 new_mean_packet = new_mean_packet / self.count_packet_server
                 new_mean_body = new_mean_body / self.count_packet_server
                 new_body_std = (self.squared_bodies - ((
-                         new_mean_body * self.count_packet_server) ** 2) / self.count_packet_server) / self.count_packet_server
+                                                               new_mean_body * self.count_packet_server) ** 2) / self.count_packet_server) / self.count_packet_server
                 new_packet_std = (self.squared_packets_server - ((
-                        new_mean_packet * self.count_packet_server) ** 2) / self.count_packet_server) / self.count_packet_server
+                                                                         new_mean_packet * self.count_packet_server) ** 2) / self.count_packet_server) / self.count_packet_server
 
-                self.server_body_length = (new_mean_body, new_body_std ** (1/2))
-                self.server_packet_length = (new_mean_packet, new_packet_std ** (1/2))
+                self.server_body_length = (new_mean_body, new_body_std ** (1 / 2))
+                self.server_packet_length = (new_mean_packet, new_packet_std ** (1 / 2))
                 self.cur_header_len = 0
                 self.cur_body_len = 0
                 # print(self.server_packet_length)
@@ -72,8 +75,9 @@ class Proxy:
             self.squared_packets_client += packet_len ** 2
             self.count_packet_client += 1
             new_mean /= self.count_packet_client
-            new_std = (self.squared_packets_client - ((new_mean * self.count_packet_client)**2)/self.count_packet_client)/self.count_packet_client
-            self.client_packet_length = ( new_mean, new_std ** (1/2))
+            new_std = (self.squared_packets_client - ((
+                                                                  new_mean * self.count_packet_client) ** 2) / self.count_packet_client) / self.count_packet_client
+            self.client_packet_length = (new_mean, new_std ** (1 / 2))
             # print(self.client_packet_length)
 
     def get_time(self):
@@ -102,6 +106,24 @@ class Proxy:
             self.status_counts[status] += 1
         self.status_semaphore.release()
 
+    def update_top_sites(self, site):
+        if site.strip() in self.top_dict.keys():
+            indx = self.top_dict[site]
+            self.top_sites[indx] = (self.top_sites[indx][0] + 1, site)
+        else:
+            self.top_sites += [(1, site)]
+            self.top_dict[site] = self.top_count
+            self.top_count += 1
+
+        # print(self.get_k_top_sites(3))
+
+    def get_k_top_sites(self, k):
+        x = sorted(self.top_sites, reverse=True)
+        tops = ''
+        for i in range(min(k, len(self.top_sites))):
+            tops += str(i + 1) + '. ' + x[i][1] + '\n'
+        return tops
+
     def client_handler(self, clnt, addr):
         try:
             with clnt:
@@ -109,12 +131,16 @@ class Proxy:
                 self.length_sema.acquire()
                 self.update_lengths(data, False)
                 self.length_sema.release()
+
                 if len(data) > 0:
                     data = data.replace("Connection: keep-alive", "Connection: close")
                     data_split = data.split("\r\n")
                     data_request = data_split[0]
                     request_type = data_request.split(" ")[0]
                     port, web_server = self.parse_request(data_request)
+                    self.top_sema.acquire()
+                    self.update_top_sites(web_server)
+                    self.top_sema.release()
                     if request_type == "GET":
                         print("Request:", "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
                               "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
