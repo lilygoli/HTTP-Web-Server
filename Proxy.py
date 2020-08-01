@@ -1,4 +1,3 @@
-import os
 import socket
 import threading
 from datetime import datetime
@@ -67,8 +66,6 @@ class Proxy:
                 self.server_packet_length = (new_mean_packet, new_packet_std ** (1 / 2))
                 self.cur_header_len = 0
                 self.cur_body_len = 0
-                # print(self.server_packet_length)
-                # print(self.server_body_length)
 
         else:
             packet_len = len(packet.encode('utf-8'))
@@ -79,7 +76,6 @@ class Proxy:
             new_std = (self.squared_packets_client - ((
                                                               new_mean * self.count_packet_client) ** 2) / self.count_packet_client) / self.count_packet_client
             self.client_packet_length = (new_mean, new_std ** (1 / 2))
-            # print(self.client_packet_length)
 
     def get_time(self):
         now = datetime.now()
@@ -116,8 +112,6 @@ class Proxy:
             self.top_dict[site] = self.top_count
             self.top_count += 1
 
-        # print(self.get_k_top_sites(3))
-
     def get_k_top_sites(self, k):
         x = sorted(self.top_sites, reverse=True)
         tops = ''
@@ -125,9 +119,10 @@ class Proxy:
             tops += str(i + 1) + '. ' + x[i][1] + '\r\n'
         return tops
 
-    def client_handler(self, clnt, addr):
+    def client_handler(self, clnt, addr, ):
         try:
             with clnt:
+
                 while True:
                     data = clnt.recv(1024).decode("utf-8")
                     self.length_sema.acquire()
@@ -135,38 +130,40 @@ class Proxy:
                     self.length_sema.release()
 
                     if len(data) > 0:
-                        # d = data
-                        # data = data.replace("Connection: keep-alive", "Connection: close")
-                        closed = False
+
+                        closed = True
                         if "Connection: keep-alive" in data:
-                            closed = True
-                        idx = str(data).index("\n")
-                        # m = data[idx+1:]
+                            closed = False
                         data_split = data.split("\r\n")
                         data_request = data_split[0]
-                        # xx = "GET "+ "/" + "HTTP/1.1\n" if str(data_request).__contains__("http") else data_request
-                        # data = xx + m
-                        # print(data)
-                        # request_type = data_request.split(" ")[0]
                         port, web_server = self.parse_request(data_request)
                         self.top_sema.acquire()
                         self.update_top_sites(web_server)
                         self.top_sema.release()
                         if port != 443:
-                            # print(data)
-                            print("thread-id:", os.getpid() ,"Request:", "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
+                            # for testing logs pid
+                            # print("thread-id:", threading.current_thread().ident, "Request:",
+                            #       "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
+                            #       "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
+                            print("Request:",
+                                  "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
                                   "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
                             data = bytes(data, 'utf-8')
                             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                                 try:
                                     s.connect((web_server, port))
-                                    print(web_server, "w", port, "p")
-                                except TimeoutError:
+                                except TimeoutError or socket.gaierror:
+                                    s.shutdown(socket.SHUT_RDWR)
+                                    s.close()
+                                    clnt.shutdown(socket.SHUT_RDWR)
+                                    clnt.close()
                                     return
                                 s.sendall(data)
                                 while True:
                                     answer = s.recv(1024)
                                     a = answer.decode('utf-8', errors='replace')
+                                    if "Connection: Close" in a:
+                                        closed = True
                                     self.length_sema.acquire()
                                     self.update_lengths(a, True)
                                     self.length_sema.release()
@@ -186,11 +183,14 @@ class Proxy:
                                     else:
                                         break
                             if closed:
+                                s.shutdown(socket.SHUT_RDWR)
                                 s.close()
                         if closed:
+                            clnt.shutdown(socket.SHUT_RDWR)
                             clnt.close()
                             break
         except ConnectionResetError:
+            clnt.shutdown(socket.SHUT_RDWR)
             clnt.close()
 
     def parse_request(self, data_request):
@@ -282,9 +282,11 @@ class Telnet:
                         command = ""
                     else:
                         command += data
+                clnt.shutdown(socket.SHUT_RDWR)
                 clnt.close()
 
         except ConnectionResetError:
+            clnt.shutdown(socket.SHUT_RDWR)
             clnt.close()
 
     def listen(self):
