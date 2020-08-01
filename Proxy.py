@@ -21,10 +21,12 @@ class Proxy:
         self.server_body_length = (0, 0)
         self.cur_body_len = 0
         self.cur_header_len = 0
+        self.types = {"text/html", "text/plain", "image/png", "image/jpg", "image/jpeg"}
+        self.type_counts = {"text/html": 0, "text/plain": 0, "image/png": 0, "image/jpg": 0, "image/jpeg": 0}
+        self.type_semaphore = threading.Semaphore()
 
     def update_lengths(self, packet, server):
         if server:
-            print("---------------------------Server-------------------------")
             if len(packet) > 0:
                 if packet.startswith("HTTP"):
 
@@ -44,17 +46,24 @@ class Proxy:
                 self.count_packet_server += 1
                 new_mean_packet = new_mean_packet / self.count_packet_server
                 new_mean_body = new_mean_body / self.count_packet_server
-
-            print("----------------------------------------------------------")
-        else:
-            print("--------------------------Client---------------------------")
-            print(packet)
-            print("------------------------------------------------------------")
-
     def get_time(self):
         now = datetime.now()
         stamp = mktime(now.timetuple())
         return format_date_time(stamp)
+
+    def find_type(self, answer):
+        for x in answer:
+            if isinstance(x, str) and x.startswith("Content-Type"):
+                element = x.split(" ")[1]
+                for t in self.types:
+                    if element.startswith(t):
+                        return t
+        return None
+
+    def update_type_counts(self, new_type):
+        self.type_semaphore.acquire()
+        self.type_counts[new_type] += 1
+        self.type_semaphore.release()
 
     def client_handler(self, clnt, addr):
         try:
@@ -67,9 +76,9 @@ class Proxy:
                     data_request = data_split[0]
                     request_type = data_request.split(" ")[0]
                     port, web_server = self.parse_request(data_request)
-                    print("Request:", "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
-                          "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
                     if request_type == "GET":
+                        print("Request:", "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
+                              "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
                         data = bytes(data, 'utf-8')
                         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                             s.connect((web_server, port))
@@ -79,7 +88,11 @@ class Proxy:
                                 a = answer.decode('utf-8', errors='replace')
                                 self.update_lengths(a, True)
                                 if a.startswith("HTTP"):
-                                    http_status = a.split("\n")[0]
+                                    answer_split = a.split("\n")
+                                    http_status = answer_split[0]
+                                    content_type = self.find_type(answer_split)
+                                    if content_type is not None:
+                                        self.update_type_counts(content_type)
                                     print("Response:", "[" + self.get_time() + "]",
                                           "[" + addr[0] + ":" + str(addr[1]) + "]",
                                           "[" + web_server + ":" + str(port) + "]",
