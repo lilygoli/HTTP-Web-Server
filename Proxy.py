@@ -15,6 +15,7 @@ class Proxy:
         self.count_packet_server = 0
         self.squared_packets_server = 0
         self.squared_bodies = 0
+        self.squared_packets_client = 0
         self.count_packet_client = 0
         self.server_packet_length = (0, 0)
         self.client_packet_length = (0, 0)
@@ -24,6 +25,7 @@ class Proxy:
         self.types = {"text/html", "text/plain", "image/png", "image/jpg", "image/jpeg"}
         self.type_counts = {"text/html": 0, "text/plain": 0, "image/png": 0, "image/jpg": 0, "image/jpeg": 0}
         self.type_semaphore = threading.Semaphore()
+        self.length_sema = threading.Semaphore()
 
     def update_lengths(self, packet, server):
         if server:
@@ -40,12 +42,36 @@ class Proxy:
                     self.cur_body_len += len(packet.encode('utf-8'))
             else:
                 new_mean_packet = self.server_packet_length[0] * self.count_packet_server + (
-                            self.cur_header_len + self.cur_body_len)
+                        self.cur_header_len + self.cur_body_len)
                 new_mean_body = self.server_body_length[0] * self.count_packet_server + self.cur_body_len
-                
+                self.squared_packets_server += (self.cur_body_len + self.cur_header_len) ** 2
+                self.squared_bodies += self.cur_body_len ** 2
+                self.squared_packets_server += (self.cur_body_len + self.cur_header_len) ** 2
                 self.count_packet_server += 1
                 new_mean_packet = new_mean_packet / self.count_packet_server
                 new_mean_body = new_mean_body / self.count_packet_server
+                new_body_std = (self.squared_bodies - ((
+                         new_mean_body * self.count_packet_server) ** 2) / self.count_packet_server) / self.count_packet_server
+                new_packet_std = (self.squared_packets_server - ((
+                        new_mean_packet * self.count_packet_server) ** 2) / self.count_packet_server) / self.count_packet_server
+
+                self.server_body_length = (new_mean_body, new_body_std ** (1/2))
+                self.server_packet_length = (new_mean_packet, new_packet_std ** (1/2))
+                self.cur_header_len = 0
+                self.cur_body_len = 0
+                # print(self.server_packet_length)
+                # print(self.server_body_length)
+
+        else:
+            packet_len = len(packet.encode('utf-8'))
+            new_mean = self.client_packet_length[0] * self.count_packet_client + packet_len
+            self.squared_packets_client += packet_len ** 2
+            self.count_packet_client += 1
+            new_mean /= self.count_packet_client
+            new_std = (self.squared_packets_client - ((new_mean * self.count_packet_client)**2)/self.count_packet_client)/self.count_packet_client
+            self.client_packet_length = ( new_mean, new_std ** (1/2))
+            # print(self.client_packet_length)
+
     def get_time(self):
         now = datetime.now()
         stamp = mktime(now.timetuple())
@@ -69,7 +95,9 @@ class Proxy:
         try:
             with clnt:
                 data = clnt.recv(1024).decode("utf-8")
+                self.length_sema.acquire()
                 self.update_lengths(data, False)
+                self.length_sema.release()
                 if len(data) > 0:
                     data = data.replace("Connection: keep-alive", "Connection: close")
                     data_split = data.split("\r\n")
@@ -86,7 +114,9 @@ class Proxy:
                             while True:
                                 answer = s.recv(1024)
                                 a = answer.decode('utf-8', errors='replace')
+                                self.length_sema.acquire()
                                 self.update_lengths(a, True)
+                                self.length_sema.release()
                                 if a.startswith("HTTP"):
                                     answer_split = a.split("\n")
                                     http_status = answer_split[0]
