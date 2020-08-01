@@ -98,7 +98,8 @@ class Proxy:
     def update_status(self, http_status_line):
         status = http_status_line.split(" ", 1)[1].strip("\r")
         self.status_semaphore.acquire()
-        self.status_counts[status] += 1
+        if status in self.status_counts.keys():
+            self.status_counts[status] += 1
         self.status_semaphore.release()
 
     def client_handler(self, clnt, addr):
