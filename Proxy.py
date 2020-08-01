@@ -1,5 +1,6 @@
 import socket
 import threading
+
 client_port = 8090
 command_port = 8091
 HOST = '127.0.0.1'
@@ -50,7 +51,6 @@ class Proxy:
         except ConnectionResetError:
             clnt.close()
 
-
     def client_listen(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((HOST, client_port))
@@ -59,6 +59,7 @@ class Proxy:
                 clnt, addr = s.accept()
                 handler = threading.Thread(target=self.client_handler, args=(clnt, addr,), daemon=False)
                 handler.start()
+
 
 def main():
     proxy = Proxy()
