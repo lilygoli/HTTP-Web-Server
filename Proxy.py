@@ -26,6 +26,10 @@ class Proxy:
         self.type_counts = {"text/html": 0, "text/plain": 0, "image/png": 0, "image/jpg": 0, "image/jpeg": 0}
         self.type_semaphore = threading.Semaphore()
         self.length_sema = threading.Semaphore()
+        self.status_counts = {"200 OK": 0, "301 Moved Permanently": 0, "304 Not Modified": 0,
+                              "400 Bad Request": 0, "404 Not Found": 0, "405 Method Not Allowed": 0,
+                              "501 Not Implemented": 0}
+        self.status_semaphore = threading.Semaphore()
 
     def update_lengths(self, packet, server):
         if server:
@@ -91,6 +95,12 @@ class Proxy:
         self.type_counts[new_type] += 1
         self.type_semaphore.release()
 
+    def update_status(self, http_status_line):
+        status = http_status_line.split(" ", 1)[1].strip("\r")
+        self.status_semaphore.acquire()
+        self.status_counts[status] += 1
+        self.status_semaphore.release()
+
     def client_handler(self, clnt, addr):
         try:
             with clnt:
@@ -120,6 +130,7 @@ class Proxy:
                                 if a.startswith("HTTP"):
                                     answer_split = a.split("\n")
                                     http_status = answer_split[0]
+                                    self.update_status(http_status)
                                     content_type = self.find_type(answer_split)
                                     if content_type is not None:
                                         self.update_type_counts(content_type)
