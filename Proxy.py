@@ -11,6 +11,46 @@ HOST = '127.0.0.1'
 
 class Proxy:
 
+    def __init__(self):
+        self.count_packet_server = 0
+        self.squared_packets_server = 0
+        self.squared_bodies = 0
+        self.count_packet_client = 0
+        self.server_packet_length = (0, 0)
+        self.client_packet_length = (0, 0)
+        self.server_body_length = (0, 0)
+        self.cur_body_len = 0
+        self.cur_header_len = 0
+
+    def update_lengths(self, packet, server):
+        if server:
+            print("---------------------------Server-------------------------")
+            if len(packet) > 0:
+                if packet.startswith("HTTP"):
+
+                    p = packet.split("\n")
+                    index = p.index('\r')
+                    body = p[index + 1]
+                    body_length = len(body.encode('utf-8'))
+                    self.cur_header_len = len(packet.encode('utf-8')) - body_length
+                    self.cur_body_len += body_length
+                else:
+                    self.cur_body_len += len(packet.encode('utf-8'))
+            else:
+                new_mean_packet = self.server_packet_length[0] * self.count_packet_server + (
+                            self.cur_header_len + self.cur_body_len)
+                new_mean_body = self.server_body_length[0] * self.count_packet_server + self.cur_body_len
+                
+                self.count_packet_server += 1
+                new_mean_packet = new_mean_packet / self.count_packet_server
+                new_mean_body = new_mean_body / self.count_packet_server
+
+            print("----------------------------------------------------------")
+        else:
+            print("--------------------------Client---------------------------")
+            print(packet)
+            print("------------------------------------------------------------")
+
     def get_time(self):
         now = datetime.now()
         stamp = mktime(now.timetuple())
@@ -20,6 +60,7 @@ class Proxy:
         try:
             with clnt:
                 data = clnt.recv(1024).decode("utf-8")
+                self.update_lengths(data, False)
                 if len(data) > 0:
                     data = data.replace("Connection: keep-alive", "Connection: close")
                     data_split = data.split("\r\n")
@@ -36,11 +77,13 @@ class Proxy:
                             while True:
                                 answer = s.recv(1024)
                                 a = answer.decode('utf-8', errors='replace')
+                                self.update_lengths(a, True)
                                 if a.startswith("HTTP"):
                                     http_status = a.split("\n")[0]
                                     print("Response:", "[" + self.get_time() + "]",
                                           "[" + addr[0] + ":" + str(addr[1]) + "]",
-                                          "[" + web_server + ":" + str(port) + "]", '"'+http_status[:-1]+'" for '+'"' + data_request + '"')
+                                          "[" + web_server + ":" + str(port) + "]",
+                                          '"' + http_status[:-1] + '" for ' + '"' + data_request + '"')
                                 if len(answer) > 0:
                                     clnt.sendall(answer)
                                 else:
@@ -78,7 +121,11 @@ class Proxy:
                 handler = threading.Thread(target=self.client_handler, args=(clnt, addr,), daemon=False)
                 handler.start()
 
+
 class Telnet:
+    def __init__(self, proxy):
+        self.proxy = proxy
+
     def handler(self, clnt, addr):
         try:
             with clnt:
@@ -97,7 +144,6 @@ class Telnet:
         except ConnectionResetError:
             clnt.close()
 
-
     def listen(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind((HOST, command_port))
@@ -108,11 +154,10 @@ class Telnet:
                 handler.start()
 
 
-
 def main():
     proxy = Proxy()
     proxy.client_listen()
-    telnet = Telnet()
+    telnet = Telnet(proxy)
     telnet.listen()
 
 
