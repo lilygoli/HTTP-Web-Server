@@ -1,3 +1,4 @@
+import os
 import socket
 import threading
 from datetime import datetime
@@ -127,53 +128,68 @@ class Proxy:
     def client_handler(self, clnt, addr):
         try:
             with clnt:
-                data = clnt.recv(1024).decode("utf-8")
-                self.length_sema.acquire()
-                self.update_lengths(data, False)
-                self.length_sema.release()
+                while True:
+                    data = clnt.recv(1024).decode("utf-8")
+                    self.length_sema.acquire()
+                    self.update_lengths(data, False)
+                    self.length_sema.release()
 
-                if len(data) > 0:
-                    data = data.replace("Connection: keep-alive", "Connection: close")
-                    data_split = data.split("\r\n")
-                    data_request = data_split[0]
-                    # request_type = data_request.split(" ")[0]
-                    port, web_server = self.parse_request(data_request)
-                    self.top_sema.acquire()
-                    self.update_top_sites(web_server)
-                    self.top_sema.release()
-                    if port != 443:
-                        print("Request:", "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
-                              "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
-                        data = bytes(data, 'utf-8')
-                        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                            try:
-                                s.connect((web_server, port))
-                            except TimeoutError:
-                                return
-                            s.sendall(data)
-                            while True:
-                                answer = s.recv(1024)
-                                a = answer.decode('utf-8', errors='replace')
-                                self.length_sema.acquire()
-                                self.update_lengths(a, True)
-                                self.length_sema.release()
-                                if a.startswith("HTTP"):
-                                    answer_split = a.split("\n")
-                                    http_status = answer_split[0]
-                                    self.update_status(http_status)
-                                    content_type = self.find_type(answer_split)
-                                    if content_type is not None:
-                                        self.update_type_counts(content_type)
-                                    print("Response:", "[" + self.get_time() + "]",
-                                          "[" + addr[0] + ":" + str(addr[1]) + "]",
-                                          "[" + web_server + ":" + str(port) + "]",
-                                          '"' + http_status[:-1] + '" for ' + '"' + data_request + '"')
-                                if len(answer) > 0:
-                                    clnt.sendall(answer)
-                                else:
-                                    break
-                        self.close = s.close()
-                    clnt.close()
+                    if len(data) > 0:
+                        # d = data
+                        # data = data.replace("Connection: keep-alive", "Connection: close")
+                        closed = False
+                        if "Connection: keep-alive" in data:
+                            closed = True
+                        idx = str(data).index("\n")
+                        # m = data[idx+1:]
+                        data_split = data.split("\r\n")
+                        data_request = data_split[0]
+                        # xx = "GET "+ "/" + "HTTP/1.1\n" if str(data_request).__contains__("http") else data_request
+                        # data = xx + m
+                        # print(data)
+                        # request_type = data_request.split(" ")[0]
+                        port, web_server = self.parse_request(data_request)
+                        self.top_sema.acquire()
+                        self.update_top_sites(web_server)
+                        self.top_sema.release()
+                        if port != 443:
+                            # print(data)
+                            print("thread-id:", os.getpid() ,"Request:", "[" + self.get_time() + "]", "[" + addr[0] + ":" + str(addr[1]) + "]",
+                                  "[" + web_server + ":" + str(port) + "]", '"' + data_request + '"')
+                            data = bytes(data, 'utf-8')
+                            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                                try:
+                                    s.connect((web_server, port))
+                                    print(web_server, "w", port, "p")
+                                except TimeoutError:
+                                    return
+                                s.sendall(data)
+                                while True:
+                                    answer = s.recv(1024)
+                                    a = answer.decode('utf-8', errors='replace')
+                                    self.length_sema.acquire()
+                                    self.update_lengths(a, True)
+                                    self.length_sema.release()
+                                    if a.startswith("HTTP"):
+                                        answer_split = a.split("\n")
+                                        http_status = answer_split[0]
+                                        self.update_status(http_status)
+                                        content_type = self.find_type(answer_split)
+                                        if content_type is not None:
+                                            self.update_type_counts(content_type)
+                                        print("Response:", "[" + self.get_time() + "]",
+                                              "[" + addr[0] + ":" + str(addr[1]) + "]",
+                                              "[" + web_server + ":" + str(port) + "]",
+                                              '"' + http_status[:-1] + '" for ' + '"' + data_request + '"')
+                                    if len(answer) > 0:
+                                        clnt.sendall(answer)
+                                    else:
+                                        break
+                            if closed:
+                                s.close()
+                        if closed:
+                            clnt.close()
+                            break
         except ConnectionResetError:
             clnt.close()
 
