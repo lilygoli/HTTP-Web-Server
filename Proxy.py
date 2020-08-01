@@ -121,7 +121,7 @@ class Proxy:
         x = sorted(self.top_sites, reverse=True)
         tops = ''
         for i in range(min(k, len(self.top_sites))):
-            tops += str(i + 1) + '. ' + x[i][1] + '\n'
+            tops += str(i + 1) + '. ' + x[i][1] + '\r\n'
         return tops
 
     def client_handler(self, clnt, addr):
@@ -207,20 +207,62 @@ class Telnet:
     def __init__(self, proxy):
         self.proxy = proxy
 
+    def make_data_from_dict(self, dictionary):
+        ans = ""
+        for (k,v) in dictionary.items():
+            ans += k + ": " + str(v) + "\r\n"
+        return ans
+
+    def make_packet_stats_answer(self):
+        answer = "Packet length received from server(mean, std): ("
+        answer += str(self.proxy.server_packet_length[0]) + ", "
+        answer += str(self.proxy.server_packet_length[1]) + ")\r\n"
+        answer += "Packet length received from client(mean, std): ("
+        answer += str(self.proxy.client_packet_length[0]) + ", "
+        answer += str(self.proxy.client_packet_length[1]) + ")\r\n"
+        answer += "Body length received from server(mean, std): ("
+        answer += str(self.proxy.server_body_length[0]) + ", "
+        answer += str(self.proxy.server_body_length[1]) + ")\r\n"
+        return answer
+
     def handler(self, clnt, addr):
+        keep_running = True
         try:
             with clnt:
                 command = ""
-                while True:
+                while keep_running:
                     data = clnt.recv(1024).decode("utf-8")
-                    print(data)
                     if data == "\r\n":
-                        print(command)
-                        ##todo ifs
+                        if command == "packet length stats":
+                            answer = self.make_packet_stats_answer()
+                        elif command == "type count":
+                            type_counts = self.proxy.type_counts
+                            answer = self.make_data_from_dict(type_counts)
+                        elif command == "status count":
+                            status_counts = self.proxy.status_counts
+                            answer = self.make_data_from_dict(status_counts)
+                        elif command == "exit":
+                            answer = "Bye"
+                            keep_running = False
+                        elif command.startswith("top"):
+                            command_parts = command.split(" ")
+                            print(command_parts)
+                            if len(command_parts) == 4 and command_parts[2] == 'visited' and command_parts[3] == 'hosts':
+                                try:
+                                    k = int(command_parts[1])
+                                    answer = self.proxy.get_k_top_sites(k)
+                                except ValueError:
+                                    answer = "Bad Request\r\n"
+                            else:
+                                answer = "Bad Request\r\n"
+                        else:
+                            answer = "Bad Request\r\n"
+                        answer = bytes(answer, "utf-8")
+                        clnt.sendall(answer)
                         command = ""
                     else:
                         command += data
-
+                clnt.close()
 
         except ConnectionResetError:
             clnt.close()
@@ -237,7 +279,8 @@ class Telnet:
 
 def main():
     proxy = Proxy()
-    proxy.client_listen()
+    thread = threading.Thread(target=proxy.client_listen, daemon=False)
+    thread.start()
     telnet = Telnet(proxy)
     telnet.listen()
 
