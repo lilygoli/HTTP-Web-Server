@@ -9,10 +9,11 @@ import multiprocessing as mp
 
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 PORT = 8080  # Port to listen on (non-privileged ports are > 1023)
-ALLOWED_URLS = ['/first.html', '/', '/second.html', '/media/night.png', '/media/sea.jpg', '/media/stars.jpeg', '/media/license.txt']
-content_types = {'/':'text/html', '/first.html':'text/html', '/second.html':'text/html',
-                 '/media/night.png':'image/png', '/media/stars.jpeg':'image/jpeg',
-                 '/media/sea.jpg':'image/jpg', '/media/license.txt':'text/plain'}
+ALLOWED_URLS = ['/first.html', '/', '/second.html', '/media/night.png', '/media/sea.jpg', '/media/stars.jpeg',
+                '/media/license.txt']
+content_types = {'/': 'text/html', '/first.html': 'text/html', '/second.html': 'text/html',
+                 '/media/night.png': 'image/png', '/media/stars.jpeg': 'image/jpeg',
+                 '/media/sea.jpg': 'image/jpg', '/media/license.txt': 'text/plain'}
 time_threads = dict()
 time_lock = mp.Lock()
 
@@ -20,6 +21,7 @@ time_lock = mp.Lock()
 def make_time_thread(clnt, t, key):
     time.sleep(t)
     clnt.close()
+
 
 class Server:
 
@@ -63,7 +65,7 @@ class Server:
         if status is None:
             content = self.get_content(request_details[1], g)
         else:
-            address = "Errors/"+str(status)+".html"
+            address = "Errors/" + str(status) + ".html"
             file = open(address, "rb")
             content = file.read()
         response_str += 'Content-Length: ' + str(len(content)) + '\r\n'
@@ -71,7 +73,7 @@ class Server:
             content_type = 'text/html'
         else:
             content_type = content_types[request_details[1]]
-        response_str += 'Content-Type: '+ content_type + '\r\n'
+        response_str += 'Content-Type: ' + content_type + '\r\n'
         if g:
             response_str += 'Content-Encoding: gzip' + '\r\n'
         time = "[" + str(self.get_time()) + "]"
@@ -125,6 +127,7 @@ class Server:
                         clnt.sendall(response)
                         if "Connection" not in data_dict or data_dict["Connection"] == "close":
                             clnt.close()
+                            break
                         else:
                             time = 60
                             if "Keep-Alive" in data_dict:
@@ -134,7 +137,7 @@ class Server:
                                         time = 60
                                 except ValueError:
                                     time = 60
-                            time_thread = mp.Process(target=make_time_thread, args=(clnt, time, key, ), daemon=False)
+                            time_thread = mp.Process(target=make_time_thread, args=(clnt, time, key,), daemon=False)
                             time_lock.acquire()
                             if key in time_threads:
                                 time_threads[key].terminate()

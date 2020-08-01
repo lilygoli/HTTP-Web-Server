@@ -16,7 +16,7 @@ class Proxy:
                     data_split = data.split("\r\n")
                     data_request = data_split[0]
                     request_type = data_request.split(" ")[0]
-                    if request_type == "GET" or request_type == "CONNECT":
+                    if request_type == "GET":
                         print(data_request)
                         url = data_request.split(" ")[1]
                         http_pos = url.find("://")
@@ -38,7 +38,6 @@ class Proxy:
                         print(web_server, port)
                         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                             s.connect((web_server, port))
-                            print("connected")
                             s.sendall(data)
                             while True:
                                 answer = s.recv(1024)
