@@ -124,7 +124,10 @@ class Proxy:
             with clnt:
 
                 while True:
-                    data = clnt.recv(1024).decode("utf-8")
+                    try:
+                        data = clnt.recv(1024).decode("utf-8")
+                    except UnicodeDecodeError:
+                        continue
                     self.length_sema.acquire()
                     self.update_lengths(data, False)
                     self.length_sema.release()
@@ -136,7 +139,11 @@ class Proxy:
                             closed = False
                         data_split = data.split("\r\n")
                         data_request = data_split[0]
-                        port, web_server = self.parse_request(data_request)
+                        port, web_server, had_http = self.parse_request(data_request)
+                        if had_http:
+                            data = data.replace("http://"+web_server, "")
+                        else:
+                            data = data.replace(web_server, "")
                         self.top_sema.acquire()
                         self.update_top_sites(web_server)
                         self.top_sema.release()
@@ -193,8 +200,10 @@ class Proxy:
         http_pos = url.find("://")
         if http_pos == -1:
             temp = url
+            had_http = False
         else:
             temp = url[(http_pos + 3):]
+            had_http = True
         port_pos = temp.find(":")
         web_server_pos = temp.find("/")
         if web_server_pos == -1:
@@ -205,7 +214,7 @@ class Proxy:
         else:
             port = int((temp[(port_pos + 1):])[:web_server_pos - port_pos - 1])
             web_server = temp[:port_pos]
-        return port, web_server
+        return port, web_server, had_http
 
     def client_listen(self):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
