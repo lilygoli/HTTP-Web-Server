@@ -153,9 +153,7 @@ class Proxy:
                                 try:
                                     s.connect((web_server, port))
                                 except TimeoutError or socket.gaierror:
-                                    s.shutdown(socket.SHUT_RDWR)
                                     s.close()
-                                    clnt.shutdown(socket.SHUT_RDWR)
                                     clnt.close()
                                     return
                                 s.sendall(data)
@@ -183,14 +181,11 @@ class Proxy:
                                     else:
                                         break
                             if closed:
-                                s.shutdown(socket.SHUT_RDWR)
                                 s.close()
                         if closed:
-                            clnt.shutdown(socket.SHUT_RDWR)
                             clnt.close()
                             break
         except ConnectionResetError:
-            clnt.shutdown(socket.SHUT_RDWR)
             clnt.close()
 
     def parse_request(self, data_request):
@@ -282,11 +277,9 @@ class Telnet:
                         command = ""
                     else:
                         command += data
-                clnt.shutdown(socket.SHUT_RDWR)
                 clnt.close()
 
         except ConnectionResetError:
-            clnt.shutdown(socket.SHUT_RDWR)
             clnt.close()
 
     def listen(self):
